@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Note</title>
+    <!-- CryptoJS library for encryption -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="password"], input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 15px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+            flex: 1;
+        }
+        button.decrypt {
+            background-color: #2196F3;
+        }
+        button.clear {
+            background-color: #f44336;
+        }
+        button.save {
+            background-color: #FF9800;
+        }
+        button.load {
+            background-color: #9C27B0;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+            display: block;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+            display: block;
+        }
+        #savedNotes {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .note-item {
+            padding: 8px;
+            margin-bottom: 5px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .note-item:hover {
+            background-color: #f0f0f0;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Secure Note</h1>
+    
+    <div class="input-group">
+        <label for="noteTitle">Note Title:</label>
+        <input type="text" id="noteTitle" placeholder="Enter a title for your note">
+    </div>
+    
+    <div class="input-group">
+        <label for="noteContent">Your Note:</label>
+        <textarea id="noteContent" placeholder="Write your secure note here..."></textarea>
+    </div>
+    
+    <div class="input-group">
+        <label for="password">Password:</label>
+        <input type="password" id="password" placeholder="Enter your encryption password">
+    </div>
+    
+    <div class="button-group">
+        <button onclick="encryptNote()">Encrypt Note</button>
+        <button class="decrypt" onclick="decryptNote()">Decrypt Note</button>
+        <button class="save" onclick="saveNote()">Save Note</button>
+        <button class="load" onclick="toggleSavedNotes()">Load Notes</button>
+        <button class="clear" onclick="clearAll()">Clear All</button>
+    </div>
+    
+    <div id="status" class="status"></div>
+    
+    <div id="savedNotes" class="hidden">
+        <h3>Saved Notes</h3>
+        <div id="notesList"></div>
+    </div>
+    
+    <script>
+        // Initialize storage
+        let notesStorage = loadNotesFromStorage();
+        
+        // Encrypt the note content
+        function encryptNote() {
+            const noteContent = document.getElementById('noteContent').value;
+            const password = document.getElementById('password').value;
+            
+            if (!noteContent || !password) {
+                showStatus('Please enter both a note and a password.', 'error');
+                return;
+            }
+            
+            try {
+                // Encrypt using AES
+                const encrypted = CryptoJS.AES.encrypt(noteContent, password).toString();
+                document.getElementById('noteContent').value = encrypted;
+                showStatus('Note encrypted successfully!', 'success');
+            } catch (error) {
+                showStatus('Encryption failed: ' + error.message, 'error');
+            }
+        }
+        
+        // Decrypt the note content
+        function decryptNote() {
+            const encryptedContent = document.getElementById('noteContent').value;
+            const password = document.getElementById('password').value;
+            
+            if (!encryptedContent || !password) {
+                showStatus('Please enter both an encrypted note and a password.', 'error');
+                return;
+            }
+            
+            try {
+                // Decrypt using AES
+                const decrypted = CryptoJS.AES.decrypt(encryptedContent, password).toString(CryptoJS.enc.Utf8);
+                
+                if (!decrypted) {
+                    throw new Error('Incorrect password or invalid encrypted text');
+                }
+                
+                document.getElementById('noteContent').value = decrypted;
+                showStatus('Note decrypted successfully!', 'success');
+            } catch (error) {
+                showStatus('Decryption failed: Incorrect password or invalid format', 'error');
+            }
+        }
+        
+        // Save note to local storage with hashed password
+        function saveNote() {
+            const title = document.getElementById('noteTitle').value.trim();
+            const content = document.getElementById('noteContent').value;
+            const password = document.getElementById('password').value;
+            
+            if (!title || !content || !password) {
+                showStatus('Please enter a title, note content, and password.', 'error');
+                return;
+            }
+            
+            // Hash the password for storage (we'll use SHA-256)
+            const hashedPassword = CryptoJS.SHA256(password).toString();
+            
+            // Check if already encrypted, if not, encrypt it
+            let encryptedContent = content;
+            try {
+                // Try to decrypt it - if it succeeds, it's not encrypted yet
+                CryptoJS.AES.decrypt(content, password).toString(CryptoJS.enc.Utf8);
+            } catch (e) {
+                // If error, it's not in proper encrypted format, so encrypt it
+                encryptedContent = CryptoJS.AES.encrypt(content, password).toString();
+            }
+            
+            // Create a note object
+            const note = {
+                id: Date.now().toString(),
+                title: title,
+                content: encryptedContent,
+                passwordHash: hashedPassword,
+                createdAt: new Date().toISOString()
+            };
+            
+            // Add to storage
+            notesStorage[note.id] = note;
+            saveNotesToStorage();
+            
+            showStatus('Note saved successfully!', 'success');
+            updateNotesList();
+        }
+        
+        // Toggle display of saved notes
+        function toggleSavedNotes() {
+            const savedNotesDiv = document.getElementById('savedNotes');
+            if (savedNotesDiv.classList.contains('hidden')) {
+                savedNotesDiv.classList.remove('hidden');
+                updateNotesList();
+            } else {
+                savedNotesDiv.classList.add('hidden');
+            }
+        }
+        
+        // Update the list of saved notes
+        function updateNotesList() {
+            const notesList = document.getElementById('notesList');
+            notesList.innerHTML = '';
+            
+            const notes = Object.values(notesStorage);
+            
+            if (notes.length === 0) {
+                notesList.innerHTML = '<p>No saved notes found.</p>';
+                return;
+            }
+            
+            notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            
+            notes.forEach(note => {
+                const noteItem = document.createElement('div');
+                noteItem.className = 'note-item';
+                noteItem.textContent = note.title;
+                noteItem.onclick = () => loadNote(note.id);
+                notesList.appendChild(noteItem);
+            });
+        }
+        
+        // Load a specific note
+        function loadNote(noteId) {
+            const note = notesStorage[noteId];
+            if (!note) {
+                showStatus('Note not found.', 'error');
+                return;
+            }
+            
+            document.getElementById('noteTitle').value = note.title;
+            document.getElementById('noteContent').value = note.content;
+            document.getElementById('password').value = '';
+            showStatus('Enter your password and click "Decrypt Note" to view.', 'success');
+        }
+        
+        // Load notes from local storage
+        function loadNotesFromStorage() {
+            try {
+                const storedNotes = localStorage.getItem('secureNotes');
+                return storedNotes ? JSON.parse(storedNotes) : {};
+            } catch (e) {
+                console.error('Error loading notes:', e);
+                return {};
+            }
+        }
+        
+        // Save notes to local storage
+        function saveNotesToStorage() {
+            try {
+                localStorage.setItem('secureNotes', JSON.stringify(notesStorage));
+            } catch (e) {
+                console.error('Error saving notes:', e);
+                showStatus('Error saving notes to storage.', 'error');
+            }
+        }
+        
+        // Export notes to JSON file
+        function exportNotes() {
+            const notesData = JSON.stringify(notesStorage, null, 2);
+            const blob = new Blob([notesData], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'secure-notes.json';
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 0);
+            
+            showStatus('Notes exported successfully!', 'success');
+        }
+        
+        // Import notes from JSON file
+        function importNotes(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedNotes = JSON.parse(e.target.result);
+                    
+                    // Merge with existing notes
+                    notesStorage = { ...notesStorage, ...importedNotes };
+                    saveNotesToStorage();
+                    
+                    updateNotesList();
+                    showStatus('Notes imported successfully!', 'success');
+                } catch (e) {
+                    console.error('Error importing notes:', e);
+                    showStatus('Error importing notes. Invalid file format.', 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        // Clear all fields
+        function clearAll() {
+            document.getElementById('noteTitle').value = '';
+            document.getElementById('noteContent').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('status').className = 'status';
+            document.getElementById('status').textContent = '';
+        }
+        
+        // Show status messages
+        function showStatus(message, type) {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = message;
+            statusElement.className = 'status ' + type;
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                statusElement.className = 'status';
+            }, 5000);
+        }
+        
+        // Add export/import buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            const buttonGroup = document.querySelector('.button-group');
+            
+            // Export button
+            const exportButton = document.createElement('button');
+            exportButton.textContent = 'Export Notes';
+            exportButton.style.backgroundColor = '#607D8B';
+            exportButton.onclick = exportNotes;
+            buttonGroup.appendChild(exportButton);
+            
+            // Import button and hidden file input
+            const importInput = document.createElement('input');
+            importInput.type = 'file';
+            importInput.id = 'importInput';
+            importInput.accept = '.json';
+            importInput.style.display = 'none';
+            importInput.onchange = importNotes;
+            document.body.appendChild(importInput);
+            
+            const importButton = document.createElement('button');
+            importButton.textContent = 'Import Notes';
+            importButton.style.backgroundColor = '#795548';
+            importButton.onclick = () => document.getElementById('importInput').click();
+            buttonGroup.appendChild(importButton);
+        });
+    </script>
+</body>
+</html>
